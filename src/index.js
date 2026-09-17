@@ -1,5 +1,7 @@
-// Cloudflare Pages Function — server-side proxy to the Ticketmaster Discovery API.
-// Keeps TICKETMASTER_API_KEY out of the client entirely (set as a Pages secret).
+// Cloudflare Worker entry point. Serves the static app from /public (via the
+// ASSETS binding) and handles /api/events itself as a server-side proxy to
+// the Ticketmaster Discovery API, so TICKETMASTER_API_KEY never reaches the
+// client or the repo.
 
 const REGIONS = {
   "south-bay": { label: "South Bay", lat: 37.3382, lon: -121.8863, radiusMiles: 15 },
@@ -52,7 +54,7 @@ async function fetchForRegionAndClass(apiKey, regionId, region, classificationNa
   }));
 }
 
-export async function onRequestGet({ request, env }) {
+async function handleEvents(request, env) {
   const apiKey = env.TICKETMASTER_API_KEY;
   if (!apiKey) {
     return Response.json(
@@ -131,3 +133,13 @@ export async function onRequestGet({ request, env }) {
 
   return Response.json({ events });
 }
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname === "/api/events") {
+      return handleEvents(request, env);
+    }
+    return env.ASSETS.fetch(request);
+  },
+};

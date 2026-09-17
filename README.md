@@ -2,7 +2,7 @@
 
 Find live music and comedy near the South Bay, Peninsula, and Santa Cruz on the dates you pick.
 
-Live app: _add the `*.pages.dev` URL here once deployed_
+Live app: _add the `*.workers.dev` URL here once deployed_
 
 ## What it does
 
@@ -19,25 +19,39 @@ Regions are approximated as a center point + radius, not exact city boundaries:
 
 ## How it's built
 
-Same zero-build pattern as [Tab Tally](https://github.com/slamb4mail-collab/tab-tally): a single
-`index.html` with inline CSS/JS, no framework, no npm. The one addition is a small serverless
-function (`functions/api/events.js`) that runs on Cloudflare Pages and proxies requests to the
-Ticketmaster Discovery API, so the API key never has to live in the browser or in this repo.
+Same zero-build spirit as [Tab Tally](https://github.com/slamb4mail-collab/tab-tally): the frontend
+(`public/index.html`) is a single file with inline CSS/JS, no framework. It's served as static
+assets from a Cloudflare Worker (`src/index.js`), which also handles one route itself —
+`/api/events` — proxying requests to the Ticketmaster Discovery API so the API key never has to
+live in the browser or in this repo.
+
+```
+local-lineup/
+  wrangler.jsonc     # Worker config: entry point + static assets directory
+  package.json       # just enough to pin the wrangler version Cloudflare's build uses
+  src/index.js        # Worker: serves /public, handles /api/events itself
+  public/
+    index.html
+    manifest.json
+    icon-192.png
+    icon-512.png
+```
 
 ## Deploying
 
 1. Push this repo to GitHub.
-2. In the Cloudflare dashboard, create a Pages project connected to this repo. Framework preset:
-   **None**. Build command: none. Output directory: `/`.
-3. In that Pages project's **Settings → Environment variables**, add a secret:
+2. In the Cloudflare dashboard ([Workers & Pages](https://dash.cloudflare.com/?to=/:account/workers-and-pages) → **Create application** → **Continue with GitHub**), connect this repo. Because it already has a `wrangler.jsonc`, Cloudflare deploys it as-is (no framework detection/build step needed) — just confirm the project name and select **Deploy**.
+3. In that Worker's **Settings → Variables and Secrets**, add:
    - `TICKETMASTER_API_KEY` — a free key from [developer.ticketmaster.com](https://developer.ticketmaster.com/)
-     (Discovery API, ~5 minute signup).
-4. Every push to `main` auto-deploys. The site is served from `https://<project>.pages.dev`.
+     (Discovery API, ~5 minute signup). Toggle **Encrypt** so it's stored as a secret.
+4. Redeploy once (secrets added after the first deploy need one more deploy to take effect).
+5. Every push to `main` auto-deploys after that. The site is served from `https://local-lineup.<your-subdomain>.workers.dev`.
 
 ### Local development
 
 ```
-npx wrangler pages dev .
+npm install
+npx wrangler dev
 ```
 
 Create a `.dev.vars` file (already gitignored) in the project root with:
