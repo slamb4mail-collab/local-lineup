@@ -11,6 +11,9 @@ export const TRIBE_EVENTS_VENUES = [
 
 const CACHE_TTL_SECONDS = 2 * 60 * 60; // 2 hours — a real API, cheap to re-poll.
 const WINDOW_DAYS = 90;
+// Bump when fetchRaw()'s parsing/normalization logic changes, so a fix takes
+// effect immediately instead of waiting out the old cache entry's TTL.
+const CACHE_VERSION = "v2";
 
 function wideWindow() {
   const iso = (d) => d.toISOString().slice(0, 10);
@@ -53,6 +56,6 @@ async function fetchRaw(venue) {
 }
 
 export async function fetchTribeEventsVenue(venue, ctx, startDate, endDate) {
-  const all = await cachedFetch(ctx, `tribe-${venue.id}`, CACHE_TTL_SECONDS, () => fetchRaw(venue));
+  const all = await cachedFetch(ctx, `tribe-${venue.id}-${CACHE_VERSION}`, CACHE_TTL_SECONDS, () => fetchRaw(venue));
   return all.filter((e) => e.date && e.date >= startDate && e.date <= endDate);
 }

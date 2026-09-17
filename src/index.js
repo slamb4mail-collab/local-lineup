@@ -133,7 +133,10 @@ async function handleEvents(request, env, ctx) {
   // also indexed by Ticketmaster directly, so the same real show can arrive
   // from two sources with different ids. Id-based dedup alone won't catch
   // that, so also collapse by a normalized venue+date+time signature.
-  const signatureOf = (e) => `${(e.venue || "").toLowerCase().replace(/[^a-z0-9]/g, "")}|${e.date || ""}|${e.time || ""}`;
+  // Sources disagree on time precision ("20:00" vs "20:00:00"), so compare
+  // on HH:MM only.
+  const signatureOf = (e) =>
+    `${(e.venue || "").toLowerCase().replace(/[^a-z0-9]/g, "")}|${e.date || ""}|${(e.time || "").slice(0, 5)}`;
 
   const byId = new Map();
   const seenSignatures = new Set();

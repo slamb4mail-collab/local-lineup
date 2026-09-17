@@ -12,6 +12,9 @@ export const TICKETWEB_VENUES = [
 ];
 
 const CACHE_TTL_SECONDS = 6 * 60 * 60; // 6 hours — be polite to a small venue's own site.
+// Bump when scrapeVenue()'s parsing/normalization logic changes, so a fix
+// takes effect immediately instead of waiting out the old cache entry's TTL.
+const CACHE_VERSION = "v2";
 
 // "Wed Sep, 16 2026" + "8:00 PM" -> { date: "2026-09-16", time: "20:00" }
 function parseEventDateTime(dateText, timeText) {
@@ -116,6 +119,6 @@ async function scrapeVenue(venue) {
 }
 
 export async function fetchTicketWebVenue(venue, ctx, startDate, endDate) {
-  const all = await cachedFetch(ctx, `ticketweb-${venue.id}`, CACHE_TTL_SECONDS, () => scrapeVenue(venue));
+  const all = await cachedFetch(ctx, `ticketweb-${venue.id}-${CACHE_VERSION}`, CACHE_TTL_SECONDS, () => scrapeVenue(venue));
   return all.filter((e) => e.date && e.date >= startDate && e.date <= endDate);
 }

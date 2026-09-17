@@ -7,12 +7,12 @@ Live app: https://local-lineup.slamb4-mail.workers.dev
 ## What it does
 
 Pick a date (or date range) and one or more regions, and the app searches Ticketmaster,
-(if configured) SeatGeek, and a handful of small venues directly (Cedar Room, Kuumbwa Jazz
-Center, and Moe's Alley — see "Event sources" below) for matching shows. Below the results is
-a set of "browse more" links to Bandsintown, Songkick, and a growing list of other small local
-venues (The Continental Bar, The Caravan Lounge, San Jose Improv, Rooster T. Feathers, Poor
-House Bistro, San Pedro Square Market, Guild Theatre, Catalyst, The Ritz) that aren't wired
-into search results yet — just outbound links to check manually for now.
+(if configured) SeatGeek, and two small venues directly (Kuumbwa Jazz Center and Moe's Alley —
+see "Event sources" below) for matching shows. Below the results is a set of "browse more" links
+to Bandsintown, Songkick, and a growing list of other small local venues (The Continental Bar,
+The Caravan Lounge, San Jose Improv, Rooster T. Feathers, Cedar Room, Poor House Bistro, San
+Pedro Square Market, Guild Theatre, Catalyst, The Ritz) that aren't wired into search results —
+just outbound links to check manually for now.
 
 Regions are approximated as a center point + radius, not exact city boundaries:
 
@@ -55,14 +55,23 @@ local-lineup/
 |---|---|---|---|
 | Ticketmaster | All 3 regions | Live API search by lat/lon | `TICKETMASTER_API_KEY` (required) |
 | SeatGeek | All 3 regions | Live API search by lat/lon | `SEATGEEK_CLIENT_ID` (optional — skipped if unset) |
-| Cedar Room, Kuumbwa Jazz Center | South Bay, Santa Cruz | Real per-venue JSON API (WordPress "The Events Calendar" plugin) | none |
+| Kuumbwa Jazz Center | Santa Cruz | Real per-venue JSON API (WordPress "The Events Calendar" plugin) | none |
 | Moe's Alley | Santa Cruz | Server-side scrape of the venue's own homepage via Cloudflare's `HTMLRewriter`, cached 6h | none |
+
+**Cedar Room** also runs the same "The Events Calendar" plugin (same code path as Kuumbwa,
+`tribeEvents.js`) but its site blocks the Worker's server-side requests — very likely
+IP-reputation/bot-detection flagging Cloudflare Workers' datacenter traffic, since the exact
+same URL works fine from a normal browser. We're not attempting to work around that; it just
+fails gracefully (excluded from results, visible via `?debug=1`) and stays a "browse more" link
+only until/unless that changes on their end.
 
 The venue-specific sources (`tribeEvents.js`, `ticketweb.js`) cache their raw per-venue event
 list using the Workers Cache API so a search only triggers a real upstream call/scrape once per
 cache window, not once per user search — see the comments in `src/cache.js`. That cache is
 per-Cloudflare-datacenter, not globally shared, which is a fine tradeoff at this app's traffic
-level but worth knowing if event counts seem to lag slightly behind a venue's live site.
+level but worth knowing if event counts seem to lag slightly behind a venue's live site. Each
+source has a `CACHE_VERSION` constant — bump it when you change that source's parsing logic so
+the fix takes effect immediately instead of waiting out the old cached entries' TTL.
 
 Nine other curated venues (The Continental Bar, The Caravan Lounge, San Jose Improv, Rooster T.
 Feathers, Poor House Bistro, San Pedro Square Market, Guild Theatre, Catalyst, The Ritz) don't
