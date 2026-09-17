@@ -22,7 +22,12 @@ function wideWindow() {
 async function fetchRaw(venue) {
   const { start, end } = wideWindow();
   const params = new URLSearchParams({ start_date: start, end_date: end, per_page: "50" });
-  const res = await fetch(`${venue.baseUrl}/wp-json/tribe/events/v1/events?${params.toString()}`);
+  const res = await fetch(`${venue.baseUrl}/wp-json/tribe/events/v1/events?${params.toString()}`, {
+    headers: {
+      "User-Agent": "LocalLineupBot/1.0 (+https://local-lineup.slamb4-mail.workers.dev; personal hobby app, low volume, cached)",
+      "Accept": "application/json",
+    },
+  });
   if (!res.ok) {
     const err = new Error(`Tribe Events request failed for ${venue.id} (${res.status})`);
     err.status = res.status;

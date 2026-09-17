@@ -30,7 +30,12 @@ function slugify(...parts) {
 }
 
 async function scrapeVenue(venue) {
-  const res = await fetch(venue.pageUrl);
+  const res = await fetch(venue.pageUrl, {
+    headers: {
+      "User-Agent": "LocalLineupBot/1.0 (+https://local-lineup.slamb4-mail.workers.dev; personal hobby app, low volume, cached)",
+      "Accept": "text/html",
+    },
+  });
   if (!res.ok) {
     const err = new Error(`TicketWeb scrape failed for ${venue.id} (${res.status})`);
     err.status = res.status;
