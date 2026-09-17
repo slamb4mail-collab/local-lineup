@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Local Lineup</title>
+<meta name="description" content="Find live music and comedy near San Jose, the Peninsula, and Santa Cruz on the dates you pick." />
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#1b1033" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Local Lineup" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="icon" href="icon-192.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #1b1033;
+    --panel: #241645;
+    --panel-2: #2f1c58;
+    --border: #3a2664;
+    --text: #f2eefc;
+    --text-dim: #b3a6d6;
+    --accent: #ffb25c;
+    --accent-2: #ff8a5c;
+    --music: #7cd9c5;
+    --comedy: #ffb25c;
+    --danger: #ff6f7a;
+    --radius: 16px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Public Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: calc(32px + env(safe-area-inset-bottom));
+  }
+
+  header {
+    padding: 28px 20px 16px;
+    text-align: left;
+  }
+
+  header h1 {
+    font-family: "Bricolage Grotesque", system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 28px;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+
+  header p {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+
+  main {
+    padding: 0 20px;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+
+  .field-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    display: block;
+    font-weight: 600;
+  }
+
+  .date-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+
+  .date-row > div { flex: 1; min-width: 130px; }
+
+  input[type="date"] {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 15px;
+    font-family: inherit;
+  }
+
+  .range-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+    user-select: none;
+    cursor: pointer;
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .chip {
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--text);
+    padding: 9px 14px;
+    border-radius: 999px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .chip.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #241000;
+    font-weight: 600;
+  }
+
+  button.search-btn {
+    width: 100%;
+    padding: 14px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #241000;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  button.search-btn:disabled { opacity: 0.6; cursor: default; }
+
+  .status {
+    text-align: center;
+    color: var(--text-dim);
+    padding: 24px 8px;
+    font-size: 14px;
+  }
+
+  .status.error { color: var(--danger); }
+
+  .retry-btn {
+    margin-top: 10px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .results-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .event-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .event-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .event-name {
+    font-weight: 700;
+    font-size: 16px;
+    line-height: 1.25;
+  }
+
+  .segment-tag {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 3px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .segment-tag.music { background: rgba(124, 217, 197, 0.18); color: var(--music); }
+  .segment-tag.comedy,
+  .segment-tag.theatre { background: rgba(255, 178, 92, 0.18); color: var(--comedy); }
+
+  .event-meta { color: var(--text-dim); font-size: 13.5px; }
+
+  .event-link {
+    align-self: flex-start;
+    margin-top: 4px;
+    color: var(--accent);
+    font-size: 13.5px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .event-link:active { opacity: 0.7; }
+
+  section.curated {
+    margin-top: 22px;
+  }
+
+  section.curated h2 {
+    font-family: "Bricolage Grotesque", system-ui, sans-serif;
+    font-size: 15px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0 0 10px;
+  }
+
+  .link-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .link-btn {
+    display: inline-block;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    text-decoration: none;
+    padding: 9px 14px;
+    border-radius: 10px;
+    font-size: 13.5px;
+  }
+
+  .link-btn:active { opacity: 0.7; }
+
+  footer {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 12px;
+    padding: 24px 20px 0;
+  }
+
+  footer a { color: var(--text-dim); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Local Lineup</h1>
+  <p>Live music &amp; comedy across the South Bay, Peninsula, and Santa Cruz.</p>
+</header>
+
+<main>
+  <div class="card">
+    <span class="field-label">When</span>
+    <div class="date-row">
+      <div>
+        <input type="date" id="start-date" />
+      </div>
+      <div id="end-date-wrap" style="display:none;">
+        <input type="date" id="end-date" />
+      </div>
+    </div>
+    <label class="range-toggle">
+      <input type="checkbox" id="range-toggle" />
+      Search a date range instead of one day
+    </label>
+
+    <span class="field-label">Where</span>
+    <div class="chips" id="region-chips"></div>
+
+    <button class="search-btn" id="search-btn">Find shows</button>
+  </div>
+
+  <div id="results"></div>
+
+  <section class="curated">
+    <h2>Browse more (small venues &amp; DIY shows)</h2>
+    <div class="link-grid" id="curated-links"></div>
+  </section>
+</main>
+
+<footer>
+  Event data via Ticketmaster. Regions are approximate (center point + radius), not exact city boundaries.
+</footer>
+
+<script>
+  const REGIONS = [
+    { id: "south-bay", label: "South Bay", primaryCity: "San Jose",
+      cities: ["San Jose", "Santa Clara", "Sunnyvale", "Campbell", "Los Gatos", "Mountain View"] },
+    { id: "peninsula", label: "Peninsula", primaryCity: "Palo Alto",
+      cities: ["Palo Alto", "Redwood City", "San Mateo", "Menlo Park"] },
+    { id: "santa-cruz", label: "Santa Cruz", primaryCity: "Santa Cruz",
+      cities: ["Santa Cruz", "Capitola", "Scotts Valley"] },
+  ];
+
+  const CURATED_LINKS = {
+    general: [
+      { name: "Bandsintown", urlFor: (city) => `https://www.bandsintown.com/searches/artists?location=${encodeURIComponent(city + ", CA")}` },
+      { name: "Songkick", urlFor: (city) => `https://www.songkick.com/search?query=${encodeURIComponent(city + ", CA")}&type=locations` },
+    ],
+    venuesByRegion: {
+      "south-bay": [
+        { name: "Cafe Stritch", url: "https://www.cafestritch.com/calendar" },
+        { name: "The Ritz (San Jose)", url: "https://www.theritzsanjose.com/" },
+        { name: "The Blank Club", url: "https://www.theblankclub.com/" },
+      ],
+      "peninsula": [
+        { name: "The Guild Theatre", url: "https://guildtheatre.com/events" },
+      ],
+      "santa-cruz": [
+        { name: "Catalyst", url: "https://www.catalystclub.com/shows" },
+        { name: "Moe's Alley", url: "https://www.moesalley.com/" },
+        { name: "Kuumbwa Jazz Center", url: "https://www.kuumbwajazz.org/events/" },
+      ],
+    },
+  };
+
+  const state = {
+    selectedRegions: new Set(REGIONS.map((r) => r.id)),
+  };
+
+  const el = (id) => document.getElementById(id);
+
+  function todayISO() {
+    const d = new Date();
+    const offset = d.getTimezoneOffset();
+    const local = new Date(d.getTime() - offset * 60000);
+    return local.toISOString().slice(0, 10);
+  }
+
+  function renderChips() {
+    const wrap = el("region-chips");
+    wrap.innerHTML = "";
+    REGIONS.forEach((region) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip" + (state.selectedRegions.has(region.id) ? " active" : "");
+      chip.textContent = region.label;
+      chip.addEventListener("click", () => {
+        if (state.selectedRegions.has(region.id)) {
+          state.selectedRegions.delete(region.id);
+        } else {
+          state.selectedRegions.add(region.id);
+        }
+        renderChips();
+        renderCuratedLinks();
+      });
+      wrap.appendChild(chip);
+    });
+  }
+
+  function renderCuratedLinks() {
+    const wrap = el("curated-links");
+    wrap.innerHTML = "";
+    const activeRegions = REGIONS.filter((r) => state.selectedRegions.has(r.id));
+    const regionsToShow = activeRegions.length ? activeRegions : REGIONS;
+
+    regionsToShow.forEach((region) => {
+      CURATED_LINKS.general.forEach((link) => {
+        const a = document.createElement("a");
+        a.className = "link-btn";
+        a.href = link.urlFor(region.primaryCity);
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = `${link.name} – ${region.label}`;
+        wrap.appendChild(a);
+      });
+      (CURATED_LINKS.venuesByRegion[region.id] || []).forEach((venue) => {
+        const a = document.createElement("a");
+        a.className = "link-btn";
+        a.href = venue.url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = venue.name;
+        wrap.appendChild(a);
+      });
+    });
+  }
+
+  function segmentClass(segment) {
+    const s = (segment || "").toLowerCase();
+    if (s.includes("music")) return "music";
+    if (s.includes("comedy")) return "comedy";
+    return "theatre";
+  }
+
+  function formatDateTime(date, time) {
+    if (!date) return "Date TBA";
+    const [y, m, d] = date.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    const dateStr = dt.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    if (!time) return dateStr;
+    const [hh, mm] = time.split(":").map(Number);
+    const t = new Date(y, m - 1, d, hh, mm);
+    const timeStr = t.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    return `${dateStr} · ${timeStr}`;
+  }
+
+  function renderResults(node) {
+    const results = el("results");
+    results.innerHTML = "";
+    results.appendChild(node);
+  }
+
+  function statusNode(message, isError, onRetry) {
+    const wrap = document.createElement("div");
+    wrap.className = "status" + (isError ? " error" : "");
+    const p = document.createElement("div");
+    p.textContent = message;
+    wrap.appendChild(p);
+    if (onRetry) {
+      const btn = document.createElement("button");
+      btn.className = "retry-btn";
+      btn.textContent = "Try again";
+      btn.addEventListener("click", onRetry);
+      wrap.appendChild(btn);
+    }
+    return wrap;
+  }
+
+  function eventsListNode(events) {
+    const wrap = document.createElement("div");
+    wrap.className = "results-list";
+    events.forEach((ev) => {
+      const card = document.createElement("div");
+      card.className = "event-card";
+
+      const top = document.createElement("div");
+      top.className = "event-top";
+      const name = document.createElement("div");
+      name.className = "event-name";
+      name.textContent = ev.name;
+      const tag = document.createElement("span");
+      tag.className = "segment-tag " + segmentClass(ev.segment);
+      tag.textContent = ev.segment || "Event";
+      top.appendChild(name);
+      top.appendChild(tag);
+
+      const meta = document.createElement("div");
+      meta.className = "event-meta";
+      meta.textContent = `${ev.venue}${ev.city ? ", " + ev.city : ""} — ${formatDateTime(ev.date, ev.time)}`;
+
+      card.appendChild(top);
+      card.appendChild(meta);
+
+      if (ev.url) {
+        const link = document.createElement("a");
+        link.className = "event-link";
+        link.href = ev.url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = "Get tickets →";
+        card.appendChild(link);
+      }
+
+      wrap.appendChild(card);
+    });
+    return wrap;
+  }
+
+  async function search() {
+    const startDate = el("start-date").value;
+    const rangeOn = el("range-toggle").checked;
+    const endDate = rangeOn ? (el("end-date").value || startDate) : startDate;
+
+    if (!startDate) {
+      renderResults(statusNode("Pick a date first.", true));
+      return;
+    }
+    if (state.selectedRegions.size === 0) {
+      renderResults(statusNode("Pick at least one region.", true));
+      return;
+    }
+
+    const btn = el("search-btn");
+    btn.disabled = true;
+    renderResults(statusNode("Looking for shows…", false));
+
+    const params = new URLSearchParams({
+      regions: Array.from(state.selectedRegions).join(","),
+      startDate,
+      endDate,
+    });
+
+    try {
+      const res = await fetch(`/api/events?${params.toString()}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        let message = "Couldn't load events right now.";
+        if (data.error === "upstream_rate_limited") message = "Hit a rate limit — try again in a bit.";
+        if (data.error === "upstream_auth") message = "The Ticketmaster key isn't working. Check the Cloudflare project settings.";
+        renderResults(statusNode(message, true, search));
+        return;
+      }
+
+      const events = data.events || [];
+      if (events.length === 0) {
+        renderResults(statusNode("No Ticketmaster listings for this date/region — try the links below.", false));
+      } else {
+        renderResults(eventsListNode(events));
+      }
+    } catch (err) {
+      renderResults(statusNode("Couldn't reach the server. Check your connection and try again.", true, search));
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  el("range-toggle").addEventListener("change", (e) => {
+    el("end-date-wrap").style.display = e.target.checked ? "block" : "none";
+  });
+
+  el("search-btn").addEventListener("click", search);
+
+  el("start-date").value = todayISO();
+  renderChips();
+  renderCuratedLinks();
+</script>
+</body>
+</html>
