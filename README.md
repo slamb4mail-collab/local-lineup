@@ -6,12 +6,13 @@ Live app: https://local-lineup.slamb4-mail.workers.dev
 
 ## What it does
 
-Pick a date (or date range) and one or more regions, and the app searches Ticketmaster and
-(if configured) SeatGeek for matching shows. Below the results is a set of "browse more" links
-to Bandsintown, Songkick,
-and a growing list of small local venues (The Continental Bar, The Caravan Lounge, San Jose
-Improv, Rooster T. Feathers, Cedar Room, Poor House Bistro, San Pedro Square Market, Moe's
-Alley, Kuumbwa Jazz Center, etc.) that don't reliably show up on Ticketmaster.
+Pick a date (or date range) and one or more regions, and the app searches Ticketmaster,
+(if configured) SeatGeek, and a handful of small venues directly (Cedar Room, Kuumbwa Jazz
+Center, and Moe's Alley — see "Event sources" below) for matching shows. Below the results is
+a set of "browse more" links to Bandsintown, Songkick, and a growing list of other small local
+venues (The Continental Bar, The Caravan Lounge, San Jose Improv, Rooster T. Feathers, Poor
+House Bistro, San Pedro Square Market, Guild Theatre, Catalyst, The Ritz) that aren't wired
+into search results yet — just outbound links to check manually for now.
 
 Regions are approximated as a center point + radius, not exact city boundaries:
 
@@ -24,22 +25,49 @@ Regions are approximated as a center point + radius, not exact city boundaries:
 Same zero-build spirit as [Tab Tally](https://github.com/slamb4mail-collab/tab-tally): the frontend
 (`public/index.html`) is a single file with inline CSS/JS, no framework. It's served as static
 assets from a Cloudflare Worker (`src/index.js`), which also handles one route itself —
-`/api/events` — proxying requests to the Ticketmaster Discovery API and, if a SeatGeek key is
-configured, the SeatGeek Platform API too, merging both into one result list. Neither key ever
-has to live in the browser or in this repo. SeatGeek is optional: if `SEATGEEK_CLIENT_ID` isn't
-set, the app just runs on Ticketmaster alone.
+`/api/events` — merging results from every configured source below into one list. No upstream
+key ever has to live in the browser or in this repo.
 
 ```
 local-lineup/
-  wrangler.jsonc     # Worker config: entry point + static assets directory
-  package.json       # just enough to pin the wrangler version Cloudflare's build uses
-  src/index.js        # Worker: serves /public, handles /api/events itself
+  wrangler.jsonc         # Worker config: entry point + static assets directory
+  package.json           # just enough to pin the wrangler version Cloudflare's build uses
+  src/
+    index.js             # fetch handler + /api/events: call assembly, merge, dedupe, sort
+    regions.js            # South Bay / Peninsula / Santa Cruz lat/lon + radius
+    cache.js               # Workers Cache API wrapper used by the venue-specific sources
+    normalize.js            # shared Music/Comedy classifier
+    sources/
+      ticketmaster.js        # Ticketmaster Discovery API (region-wide search)
+      seatgeek.js             # SeatGeek Platform API (region-wide search, optional)
+      tribeEvents.js           # Cedar Room + Kuumbwa Jazz Center — real per-venue JSON API
+      ticketweb.js              # Moe's Alley — HTMLRewriter scrape of a stable plugin markup
   public/
     index.html
     manifest.json
     icon-192.png
     icon-512.png
 ```
+
+### Event sources
+
+| Source | Coverage | How | Key needed |
+|---|---|---|---|
+| Ticketmaster | All 3 regions | Live API search by lat/lon | `TICKETMASTER_API_KEY` (required) |
+| SeatGeek | All 3 regions | Live API search by lat/lon | `SEATGEEK_CLIENT_ID` (optional — skipped if unset) |
+| Cedar Room, Kuumbwa Jazz Center | South Bay, Santa Cruz | Real per-venue JSON API (WordPress "The Events Calendar" plugin) | none |
+| Moe's Alley | Santa Cruz | Server-side scrape of the venue's own homepage via Cloudflare's `HTMLRewriter`, cached 6h | none |
+
+The venue-specific sources (`tribeEvents.js`, `ticketweb.js`) cache their raw per-venue event
+list using the Workers Cache API so a search only triggers a real upstream call/scrape once per
+cache window, not once per user search — see the comments in `src/cache.js`. That cache is
+per-Cloudflare-datacenter, not globally shared, which is a fine tradeoff at this app's traffic
+level but worth knowing if event counts seem to lag slightly behind a venue's live site.
+
+Nine other curated venues (The Continental Bar, The Caravan Lounge, San Jose Improv, Rooster T.
+Feathers, Poor House Bistro, San Pedro Square Market, Guild Theatre, Catalyst, The Ritz) don't
+expose a public API or a shared, easily-scraped plugin, so they remain "browse more" links only
+for now — a future pass could add bespoke scrapers for these one at a time.
 
 ## Deploying
 

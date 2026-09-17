@@ -1,15 +1,12 @@
 // Cloudflare Worker entry point. Serves the static app from /public (via the
-// ASSETS binding) and handles /api/events itself as a server-side proxy to
-// the Ticketmaster Discovery API and (optionally) the SeatGeek Platform API,
-// so neither key ever reaches the client or the repo.
-
-const REGIONS = {
-  "south-bay": { label: "South Bay", lat: 37.3382, lon: -121.8863, radiusMiles: 15 },
-  "peninsula": { label: "Peninsula", lat: 37.4419, lon: -122.1430, radiusMiles: 12 },
-  "santa-cruz": { label: "Santa Cruz", lat: 36.9741, lon: -122.0308, radiusMiles: 10 },
-};
-
-const CLASSIFICATIONS = ["Music", "Arts & Theatre"];
+// ASSETS binding) and handles /api/events itself as a server-side proxy that
+// merges results from several event sources, so no upstream key/scrape ever
+// reaches the client or the repo.
+import { REGIONS } from "./regions.js";
+import { CLASSIFICATIONS, fetchTicketmaster } from "./sources/ticketmaster.js";
+import { SEATGEEK_TAXONOMIES, fetchSeatGeek } from "./sources/seatgeek.js";
+import { TRIBE_EVENTS_VENUES, fetchTribeEventsVenue } from "./sources/tribeEvents.js";
+import { TICKETWEB_VENUES, fetchTicketWebVenue } from "./sources/ticketweb.js";
 
 // Approximates Pacific local-day boundaries in UTC using a fixed -8h offset
 // (no timezone library available in the Workers runtime). Good enough for a
@@ -27,79 +24,7 @@ function toLocalBoundary(dateStr, endOfDay) {
   return `${dateStr}T${endOfDay ? "23:59:59" : "00:00:00"}`;
 }
 
-async function fetchTicketmaster(apiKey, regionId, region, classificationName, startDateTime, endDateTime) {
-  const params = new URLSearchParams({
-    apikey: apiKey,
-    latlong: `${region.lat},${region.lon}`,
-    radius: String(region.radiusMiles),
-    unit: "miles",
-    startDateTime,
-    endDateTime,
-    classificationName,
-    size: "50",
-    sort: "date,asc",
-  });
-  const res = await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?${params.toString()}`);
-  if (!res.ok) {
-    const err = new Error(`Ticketmaster request failed (${res.status})`);
-    err.status = res.status;
-    throw err;
-  }
-  const data = await res.json();
-  const events = data?._embedded?.events || [];
-  return events.map((e) => ({
-    id: `tm-${e.id}`,
-    name: e.name,
-    date: e.dates?.start?.localDate || null,
-    time: e.dates?.start?.localTime || null,
-    venue: e._embedded?.venues?.[0]?.name || "Unknown venue",
-    city: e._embedded?.venues?.[0]?.city?.name || "",
-    url: e.url,
-    segment: e.classifications?.[0]?.segment?.name || classificationName,
-    regionId,
-  }));
-}
-
-// SeatGeek taxonomy names -> our display segment.
-const SEATGEEK_TAXONOMIES = { concert: "Music", comedy: "Comedy" };
-
-async function fetchSeatGeek(clientId, regionId, region, taxonomyName, startDateTime, endDateTime) {
-  const params = new URLSearchParams({
-    client_id: clientId,
-    lat: String(region.lat),
-    lon: String(region.lon),
-    range: `${region.radiusMiles}mi`,
-    "datetime_local.gte": startDateTime,
-    "datetime_local.lte": endDateTime,
-    "taxonomies.name": taxonomyName,
-    per_page: "50",
-    sort: "datetime_local.asc",
-  });
-  const res = await fetch(`https://api.seatgeek.com/2/events?${params.toString()}`);
-  if (!res.ok) {
-    const err = new Error(`SeatGeek request failed (${res.status})`);
-    err.status = res.status;
-    throw err;
-  }
-  const data = await res.json();
-  const events = data?.events || [];
-  return events.map((e) => {
-    const [date, time] = (e.datetime_local || "").split("T");
-    return {
-      id: `sg-${e.id}`,
-      name: e.title || e.short_title,
-      date: date || null,
-      time: time ? time.slice(0, 5) : null,
-      venue: e.venue?.name || "Unknown venue",
-      city: e.venue?.city || "",
-      url: e.url,
-      segment: SEATGEEK_TAXONOMIES[taxonomyName] || taxonomyName,
-      regionId,
-    };
-  });
-}
-
-async function handleEvents(request, env) {
+async function handleEvents(request, env, ctx) {
   const apiKey = env.TICKETMASTER_API_KEY;
   if (!apiKey) {
     return Response.json(
@@ -112,6 +37,7 @@ async function handleEvents(request, env) {
   const regionIds = (url.searchParams.get("regions") || "").split(",").map((s) => s.trim()).filter(Boolean);
   const startDate = url.searchParams.get("startDate");
   const endDate = url.searchParams.get("endDate") || startDate;
+  const debug = url.searchParams.get("debug") === "1";
 
   if (regionIds.length === 0 || !startDate) {
     return Response.json(
@@ -131,11 +57,13 @@ async function handleEvents(request, env) {
   const endLocal = toLocalBoundary(endDate, true);
 
   const calls = [];
+
   for (const regionId of validRegionIds) {
     for (const classificationName of CLASSIFICATIONS) {
-      calls.push(
-        fetchTicketmaster(apiKey, regionId, REGIONS[regionId], classificationName, startDateTime, endDateTime)
-      );
+      calls.push({
+        meta: { source: "ticketmaster", venueId: regionId },
+        promise: fetchTicketmaster(apiKey, regionId, REGIONS[regionId], classificationName, startDateTime, endDateTime),
+      });
     }
   }
 
@@ -145,17 +73,40 @@ async function handleEvents(request, env) {
   if (seatgeekClientId) {
     for (const regionId of validRegionIds) {
       for (const taxonomyName of Object.keys(SEATGEEK_TAXONOMIES)) {
-        calls.push(
-          fetchSeatGeek(seatgeekClientId, regionId, REGIONS[regionId], taxonomyName, startLocal, endLocal)
-        );
+        calls.push({
+          meta: { source: "seatgeek", venueId: regionId },
+          promise: fetchSeatGeek(seatgeekClientId, regionId, REGIONS[regionId], taxonomyName, startLocal, endLocal),
+        });
       }
     }
   }
 
-  const results = await Promise.allSettled(calls);
+  // Fixed-location venues (not lat/lon region searches) — only fetch a venue
+  // when its region is among the ones requested.
+  for (const venue of TRIBE_EVENTS_VENUES) {
+    if (!validRegionIds.includes(venue.regionId)) continue;
+    calls.push({
+      meta: { source: "tribeEvents", venueId: venue.id },
+      promise: fetchTribeEventsVenue(venue, ctx, startDate, endDate),
+    });
+  }
 
-  const fulfilled = results.filter((r) => r.status === "fulfilled");
-  const failures = results.filter((r) => r.status === "rejected");
+  for (const venue of TICKETWEB_VENUES) {
+    if (!validRegionIds.includes(venue.regionId)) continue;
+    calls.push({
+      meta: { source: "ticketweb", venueId: venue.id },
+      promise: fetchTicketWebVenue(venue, ctx, startDate, endDate),
+    });
+  }
+
+  const results = await Promise.allSettled(calls.map((c) => c.promise));
+
+  const fulfilled = [];
+  const failures = [];
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") fulfilled.push(r);
+    else failures.push({ ...calls[i].meta, reason: r.reason });
+  });
 
   if (fulfilled.length === 0 && failures.length > 0) {
     const authFailure = failures.find((f) => f.reason?.status === 401 || f.reason?.status === 403);
@@ -191,14 +142,23 @@ async function handleEvents(request, env) {
     return da.localeCompare(db);
   });
 
-  return Response.json({ events });
+  const body = { events };
+  if (debug) {
+    body.sourcesFailed = failures.map((f) => ({
+      source: f.source,
+      venueId: f.venueId,
+      message: f.reason?.message || String(f.reason),
+    }));
+  }
+
+  return Response.json(body);
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/api/events") {
-      return handleEvents(request, env);
+      return handleEvents(request, env, ctx);
     }
     return env.ASSETS.fetch(request);
   },
