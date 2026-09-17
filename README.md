@@ -2,7 +2,7 @@
 
 Find live music and comedy near the South Bay, Peninsula, and Santa Cruz on the dates you pick.
 
-Live app: _add the `*.workers.dev` URL here once deployed_
+Live app: https://local-lineup.slamb4-mail.workers.dev
 
 ## What it does
 
