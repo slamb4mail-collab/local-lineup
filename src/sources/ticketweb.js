@@ -4,7 +4,7 @@
 // fragile regex or an npm HTML-parsing dependency. Confirmed live against
 // moesalley.com — a future venue on the same plugin is just one more entry
 // in this list, no new parsing code.
-import { classifySegment } from "../normalize.js";
+import { classifySegment, decodeEntities } from "../normalize.js";
 import { cachedFetch } from "../cache.js";
 
 export const TICKETWEB_VENUES = [
@@ -96,7 +96,7 @@ async function scrapeVenue(venue) {
 
   return records
     .map((r, i) => {
-      const name = r.name.trim();
+      const name = decodeEntities(r.name.trim());
       const showTime = r.showTimeText.replace(/^\s*\/\s*Show:\s*/i, "").trim();
       const doorTime = r.doorTimeText.trim();
       const { date, time } = parseEventDateTime(r.dateText.trim(), showTime || doorTime);

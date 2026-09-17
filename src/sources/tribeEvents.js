@@ -1,7 +1,7 @@
 // Venues running the WordPress "The Events Calendar" plugin expose a real
 // public JSON API — no auth, no scraping. Adding a future venue on the same
 // plugin is just one more entry in this list.
-import { classifySegment } from "../normalize.js";
+import { classifySegment, decodeEntities } from "../normalize.js";
 import { cachedFetch } from "../cache.js";
 
 export const TRIBE_EVENTS_VENUES = [
@@ -40,7 +40,7 @@ async function fetchRaw(venue) {
     const categoryText = (e.categories || []).map((c) => c.name).join(" ");
     return {
       id: `tribe-${venue.id}-${e.id}`,
-      name: e.title,
+      name: decodeEntities(e.title),
       date: date || null,
       time: time ? time.slice(0, 5) : null,
       venue: e.venue?.venue || venue.name,

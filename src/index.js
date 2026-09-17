@@ -129,10 +129,21 @@ async function handleEvents(request, env, ctx) {
     );
   }
 
+  // Some venues (e.g. Moe's Alley) sell tickets through a platform that's
+  // also indexed by Ticketmaster directly, so the same real show can arrive
+  // from two sources with different ids. Id-based dedup alone won't catch
+  // that, so also collapse by a normalized venue+date+time signature.
+  const signatureOf = (e) => `${(e.venue || "").toLowerCase().replace(/[^a-z0-9]/g, "")}|${e.date || ""}|${e.time || ""}`;
+
   const byId = new Map();
+  const seenSignatures = new Set();
   for (const r of fulfilled) {
     for (const event of r.value) {
-      if (!byId.has(event.id)) byId.set(event.id, event);
+      if (byId.has(event.id)) continue;
+      const signature = signatureOf(event);
+      if (seenSignatures.has(signature)) continue;
+      seenSignatures.add(signature);
+      byId.set(event.id, event);
     }
   }
 
