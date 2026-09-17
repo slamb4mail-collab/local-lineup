@@ -1,7 +1,7 @@
 // Cloudflare Worker entry point. Serves the static app from /public (via the
 // ASSETS binding) and handles /api/events itself as a server-side proxy to
-// the Ticketmaster Discovery API, so TICKETMASTER_API_KEY never reaches the
-// client or the repo.
+// the Ticketmaster Discovery API and (optionally) the SeatGeek Platform API,
+// so neither key ever reaches the client or the repo.
 
 const REGIONS = {
   "south-bay": { label: "South Bay", lat: 37.3382, lon: -121.8863, radiusMiles: 15 },
@@ -21,7 +21,13 @@ function toUtcBoundary(dateStr, endOfDay) {
   return local.toISOString().replace(/\.\d+Z$/, "Z");
 }
 
-async function fetchForRegionAndClass(apiKey, regionId, region, classificationName, startDateTime, endDateTime) {
+// SeatGeek's datetime_local filters are literally local to each venue, so no
+// UTC conversion is needed (unlike Ticketmaster above) — just a plain boundary.
+function toLocalBoundary(dateStr, endOfDay) {
+  return `${dateStr}T${endOfDay ? "23:59:59" : "00:00:00"}`;
+}
+
+async function fetchTicketmaster(apiKey, regionId, region, classificationName, startDateTime, endDateTime) {
   const params = new URLSearchParams({
     apikey: apiKey,
     latlong: `${region.lat},${region.lon}`,
@@ -42,7 +48,7 @@ async function fetchForRegionAndClass(apiKey, regionId, region, classificationNa
   const data = await res.json();
   const events = data?._embedded?.events || [];
   return events.map((e) => ({
-    id: e.id,
+    id: `tm-${e.id}`,
     name: e.name,
     date: e.dates?.start?.localDate || null,
     time: e.dates?.start?.localTime || null,
@@ -52,6 +58,45 @@ async function fetchForRegionAndClass(apiKey, regionId, region, classificationNa
     segment: e.classifications?.[0]?.segment?.name || classificationName,
     regionId,
   }));
+}
+
+// SeatGeek taxonomy names -> our display segment.
+const SEATGEEK_TAXONOMIES = { concert: "Music", comedy: "Comedy" };
+
+async function fetchSeatGeek(clientId, regionId, region, taxonomyName, startDateTime, endDateTime) {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    lat: String(region.lat),
+    lon: String(region.lon),
+    range: `${region.radiusMiles}mi`,
+    "datetime_local.gte": startDateTime,
+    "datetime_local.lte": endDateTime,
+    "taxonomies.name": taxonomyName,
+    per_page: "50",
+    sort: "datetime_local.asc",
+  });
+  const res = await fetch(`https://api.seatgeek.com/2/events?${params.toString()}`);
+  if (!res.ok) {
+    const err = new Error(`SeatGeek request failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  const data = await res.json();
+  const events = data?.events || [];
+  return events.map((e) => {
+    const [date, time] = (e.datetime_local || "").split("T");
+    return {
+      id: `sg-${e.id}`,
+      name: e.title || e.short_title,
+      date: date || null,
+      time: time ? time.slice(0, 5) : null,
+      venue: e.venue?.name || "Unknown venue",
+      city: e.venue?.city || "",
+      url: e.url,
+      segment: SEATGEEK_TAXONOMIES[taxonomyName] || taxonomyName,
+      regionId,
+    };
+  });
 }
 
 async function handleEvents(request, env) {
@@ -82,13 +127,28 @@ async function handleEvents(request, env) {
 
   const startDateTime = toUtcBoundary(startDate, false);
   const endDateTime = toUtcBoundary(endDate, true);
+  const startLocal = toLocalBoundary(startDate, false);
+  const endLocal = toLocalBoundary(endDate, true);
 
   const calls = [];
   for (const regionId of validRegionIds) {
     for (const classificationName of CLASSIFICATIONS) {
       calls.push(
-        fetchForRegionAndClass(apiKey, regionId, REGIONS[regionId], classificationName, startDateTime, endDateTime)
+        fetchTicketmaster(apiKey, regionId, REGIONS[regionId], classificationName, startDateTime, endDateTime)
       );
+    }
+  }
+
+  // SeatGeek is an optional second source — skip it silently if no client_id
+  // is configured yet, rather than failing the whole request.
+  const seatgeekClientId = env.SEATGEEK_CLIENT_ID;
+  if (seatgeekClientId) {
+    for (const regionId of validRegionIds) {
+      for (const taxonomyName of Object.keys(SEATGEEK_TAXONOMIES)) {
+        calls.push(
+          fetchSeatGeek(seatgeekClientId, regionId, REGIONS[regionId], taxonomyName, startLocal, endLocal)
+        );
+      }
     }
   }
 
@@ -101,19 +161,19 @@ async function handleEvents(request, env) {
     const authFailure = failures.find((f) => f.reason?.status === 401 || f.reason?.status === 403);
     if (authFailure) {
       return Response.json(
-        { error: "upstream_auth", message: "Ticketmaster rejected the API key." },
+        { error: "upstream_auth", message: "An upstream API key was rejected." },
         { status: 502 }
       );
     }
     const rateLimited = failures.find((f) => f.reason?.status === 429);
     if (rateLimited) {
       return Response.json(
-        { error: "upstream_rate_limited", message: "Ticketmaster rate limit hit, try again shortly." },
+        { error: "upstream_rate_limited", message: "Rate limit hit, try again shortly." },
         { status: 429 }
       );
     }
     return Response.json(
-      { error: "upstream_error", message: "Couldn't reach Ticketmaster right now." },
+      { error: "upstream_error", message: "Couldn't reach event sources right now." },
       { status: 502 }
     );
   }
