@@ -8,9 +8,9 @@ Live app: https://local-lineup.slamb4-mail.workers.dev
 
 Pick a date (or date range) and one or more regions, and the app searches Ticketmaster for
 matching shows. Below the results is a set of "browse more" links to Bandsintown, Songkick,
-and a handful of small local venues (The Continental Bar, The Caravan Lounge, San Jose Improv,
-Rooster T. Feathers, Moe's Alley, Kuumbwa Jazz Center, etc.) that don't reliably show up on
-Ticketmaster.
+and a growing list of small local venues (The Continental Bar, The Caravan Lounge, San Jose
+Improv, Rooster T. Feathers, Cedar Room, Poor House Bistro, San Pedro Square Market, Moe's
+Alley, Kuumbwa Jazz Center, etc.) that don't reliably show up on Ticketmaster.
 
 Regions are approximated as a center point + radius, not exact city boundaries:
 
